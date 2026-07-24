@@ -1,5 +1,6 @@
 #![allow(warnings)]
 
+//TODO: FATAL BOOK KEEPING BUG at line 188 (Highest Priority)
 
 use std::ops::Index;
 use std::{env, fs};
@@ -9,26 +10,50 @@ use std::os::unix::process;
 use colored::Colorize;
 use std::collections::HashMap;
 
-struct bracket_parser{
-    stack      : Vec<char>,
-    is_matched : bool,
-    map        : HashMap<char,Vec<usize>>,
+
+struct stack_element{
+    character : char,
+    index     : usize, 
 }
+
+impl stack_element{
+    fn new(character : char, index : usize) -> Self{
+        Self { character: (character), index: (index) }
+    }
+}
+
+
+struct bracket_parser{
+    stack      : Vec<stack_element>,
+    is_matched : bool,
+    map        : HashMap<usize,usize>, 
+    brace_count: (usize,usize),
+}
+
+/* We need the following behavior to implement looping  */
+
+/* Map(OpeningBraceIndex) = ClosingBraceIndex 
+   Map(ClosingBraceIndex) = OpeningBraceIndex
+*/
 
 impl bracket_parser{
     fn new() -> Self{
-        Self { stack: (Vec::new()), is_matched: (false), map: (HashMap::new())}
+        Self { stack: (Vec::new()), is_matched: (false), map: (HashMap::new()), brace_count: (0,0)}
     }
     fn parse(&mut self,source: &str) -> &bracket_parser{
         for (idx,ch) in source.char_indices(){
             if ch == '['{
-                self.map.entry(ch).or_default().push(idx);
-                self.stack.push(ch);
+                self.brace_count.0+=1;
+                let se = stack_element::new(ch, idx);
+                self.stack.push(se);
             }
             else if ch == ']'{
-                self.map.entry(ch).or_default().push(idx);
+                self.brace_count.1+=1;
                 if !self.stack.is_empty(){
-                    self.stack.pop();
+                    if let Some(se) = self.stack.pop(){
+                       self.map.insert(idx,se.index);
+                       self.map.insert(se.index, idx);
+                    }
                 }
                 else{  /* Errorneous Case */
                     return self;
@@ -46,18 +71,15 @@ impl bracket_parser{
         if self.is_matched == false{
             eprintln!("[{}]: {}","Syntax Error".red(),"Unmatched Brace");
 
-            let mut lbrace_count = 0;
-            let mut  rbrace_count = 0;
+            let lbrace_count = self.brace_count.0;
+            let rbrace_count = self.brace_count.1;
 
-            if let Some(lbrace_count_vec) = self.map.get(&'['){
-                lbrace_count = lbrace_count_vec.len();
+            if(lbrace_count > rbrace_count){
+                eprintln!("[{}]: Found {} '[' but only {} ']' got closed","Hint".purple(),lbrace_count,rbrace_count);
+            }           
+            else{
+                eprintln!("[{}]: Found {} '[' but got closed by {} ']'","Hint".purple(),lbrace_count,rbrace_count);
             }
-
-            if let Some(rbrace_count_vec) = self.map.get(&']'){
-                rbrace_count = rbrace_count_vec.len();
-            }
-            
-            eprintln!("[{}]: Found {} '[' but only {} got closed","Hint".purple(),lbrace_count,rbrace_count);
             std::process::exit(1);
         }
     }
@@ -88,7 +110,7 @@ impl BrainFuck{
 
     fn print_tape(&self){
         for ch in self.tape.iter(){
-            println!("[{}]",ch);
+            print!("[{}]",ch);
         }
     }
 
@@ -133,25 +155,76 @@ impl BrainFuck{
                 let mut user_input = String::new();
                 std::io::stdin().read_line(&mut user_input).unwrap_or_else(
                     |err|{
-                        eprintln!("{}: {}","Side Effect Error".red(),err);
+                        eprintln!("[{}]: {}","Side Effect Error".red(),err);
                         std::process::exit(1);
                     });
+                user_input.push('\n');
                 self.instructions_idx+=1;
             }
             else if cmd == '['{
                 if self.tape[self.tape_idx] == 0 {
+                    /* let jump_index = bp.map.get(&self.instructions_idx).unwrap_or_else(||{
+                        eprintln!("[{}]","Internal Book Keeping Error".red());
+                        eprintln!("[{}]: {}","Hint".purple(),"Couldnt find corresponding index for braces in the HashMap");
+                        std::process::exit(1);
+                    }); */
+                    println!("{:?}",bp.map);
+                    let jump_index= bp.map.get(&self.instructions_idx).unwrap();
+
+                    self.instructions_idx = *jump_index;
                 } 
+                else if self.tape[self.tape_idx] != 0{
+                    self.instructions_idx+=1;
+                }
+            }
+            else if cmd == ']'{
+                if self.tape[self.tape_idx] != 0{
+                    /* let jump_index = bp.map.get(&self.instructions_idx).unwrap_or_else(||{
+                        eprintln!("[{}]","Internal Book Keeping Error".red());
+                        eprintln!("[{}]: {}","Hint".purple(),"Couldnt find corresponding index for braces in the HashMap");
+                        std::process::exit(1);
+                    }); */
+                    println!("{:?}",bp.map);
+                    let jump_index= bp.map.get(&self.instructions_idx).unwrap();
+                    self.instructions_idx  = *jump_index;
+                }
+                else if self.tape[self.tape_idx] == 0{
+                    self.instructions_idx+=1;
+                }
             } 
         }
     }
 }
 
 
+fn main() -> Result<(),std::io::Error>{
+    let mut brainfuck = BrainFuck::new();
+    /* let cl_args: Vec<_> = env::args().collect();
 
-fn main(){
-    let mut bp = bracket_parser::new();
-    bp.parse("[[ ] ] [[] [[ ]]][ ][ ] [ ] ][[ []]]").verify();
-    println!("{:?}",bp.map);
+    if cl_args.len() != 2{
+        eprintln!("[{}]: {}","Fatal Error".red(),"No source file passed");   
+        std::process::exit(1);
+    }
+
+    if cl_args[1].contains(".bf") == false{
+        eprintln!("[{}]: {}","Fatal Error".red(),"The file provided isnt a valid extension for brainf*ck program");   
+        std::process::exit(1);
+    }*/
+
+    brainfuck.copy_instructions("test.bf")?;
+    brainfuck.read_next_instruction();
+
+    brainfuck.print_tape();
+    
+
+    /* let mut bp = bracket_parser::new();
+    bp.parse("[][]").verify();
+    
+    println!("{:?}",bp.map); */
+
+
+
+    Ok(())
 }
 /*
 #[cfg(test)]

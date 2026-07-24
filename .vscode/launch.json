@@ -1,0 +1,21 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug executable 'bfi'",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin",
+                    "bfi"
+                ]
+            },
+            "args": [
+                "hello.bf"
+            ],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
