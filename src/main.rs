@@ -9,7 +9,7 @@ use std::io::prelude::*;
 use std::os::unix::process;
 use colored::Colorize;
 use std::collections::HashMap;
-
+use std::path::Path;
 
 struct stack_element{
     character : char,
@@ -91,16 +91,23 @@ struct BrainFuck{
     tape_idx         : usize,
     instructions     : String,
     instructions_idx : usize,
+    source_file_name : String,
 }
 
 
 impl BrainFuck{
     fn new() -> Self{
-        Self { tape: (vec![0;30_000]), tape_idx: (0), instructions: (String::new()), instructions_idx: (0) }
+        Self { tape: (vec![0;30_000]), tape_idx: (0), instructions: (String::new()), instructions_idx: (0), source_file_name: (String::new()) }
     }
 
     fn copy_instructions(&mut self,path: &str) -> Result<(),std::io::Error>{
+        let file_name = Path::new(path)
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap();
         self.instructions = fs::read_to_string(path)?;
+        self.source_file_name = String::from(file_name);
         Ok(())
     }
 
@@ -109,112 +116,144 @@ impl BrainFuck{
     } 
 
     fn print_tape(&self){
-        for ch in self.tape.iter(){
-            print!("[{}]",ch);
+        for i in 0..self.tape_idx{
+            print!("[{}]",self.tape[i]);
         }
+        println!();
+
+        /* for ch in self.tape.iter(){
+            print!("[{}]",ch);
+        } */
     }
 
     fn read_next_instruction(&mut self){
         let mut bp = bracket_parser::new();
         bp.parse(&self.instructions).verify();
 
+        while self.instructions_idx < self.instructions.len(){
+            let cmd = self.instructions.as_bytes()[self.instructions_idx] as char;
+            match cmd{
+                '+' => 
+                {
+                    if(self.tape[self.tape_idx] == u8::MAX){
+                        self.tape[self.tape_idx] = 0;
+                    }
+                    self.tape[self.tape_idx] += 1;
+                    self.instructions_idx+=1;
+                }
 
-        for cmd in self.instructions.chars(){
-            if cmd == '+'{
-                if(self.tape[self.tape_idx] == u8::MAX){
-                    self.tape[self.tape_idx] = 0;
+                '-' => 
+                {
+                    if(self.tape[self.tape_idx] == u8::MIN){
+                        self.tape[self.tape_idx] = 255;
+                    }
+                    self.tape[self.tape_idx] -= 1;
+                    self.instructions_idx+=1;
                 }
-                self.tape[self.tape_idx] += 1;
-                self.instructions_idx+=1;
-            }
-            else if cmd == '-'{
-                if(self.tape[self.tape_idx] == u8::MIN){
-                    self.tape[self.tape_idx] = 255;
+
+                '>' => 
+                {
+                    self.tape_idx +=1;
+                    self.instructions_idx+=1;
                 }
-                self.tape[self.tape_idx] -= 1;
-                self.instructions_idx+=1;
-            }
-            else if cmd == '>'{
-                self.tape_idx +=1;
-                self.instructions_idx+=1;
-            }
-            else if cmd == '<'{
-                if self.tape_idx == 0{
-                    eprintln!("{}: {}","Semantic Error".red(),"No further left shifting allowed");
-                    eprintln!("{}: {}","Hint".purple(),"Try Using right shifting operator(>)");
-                    std::process::exit(1);
+                '<' =>
+                {
+                    if self.tape_idx == 0{
+                        eprintln!("[{}]: {} in {} at column {} ","Semantic Error".red(),"No further left shifting allowed",self.source_file_name.bright_yellow(),self.instructions_idx);
+                        eprintln!("[{}]: {}","Hint".purple(),"Try Using right shifting operator(>)");
+                        std::process::exit(1);
+                    }
+                    self.tape_idx -=1;
+                    self.instructions_idx+=1
                 }
-                self.tape_idx -=1;
-                self.instructions_idx+=1;
-            }
-            else if cmd == '.'{
-                print!("{}",self.tape[self.tape_idx]);
-                self.instructions_idx+=1;
-            }
-            else if cmd == ','{
-                let mut user_input = String::new();
-                std::io::stdin().read_line(&mut user_input).unwrap_or_else(
+                '.' =>
+                {
+                    let tape_char = self.tape[self.tape_idx];
+
+                    if tape_char >= 32 && tape_char <= 126 || tape_char == 10 {
+                        print!("{}",tape_char as char);
+                    }
+                    else {
+                        print!("{}",self.tape[self.tape_idx]);
+                    }
+                    self.instructions_idx+=1;
+                }
+                ',' => 
+                {
+                    let mut user_input = String::new();
+                    std::io::stdin().read_line(&mut user_input).unwrap_or_else(
                     |err|{
-                        eprintln!("[{}]: {}","Side Effect Error".red(),err);
+
+                        eprintln!("[{}]: in {} {}","Side Effect Error".red(),self.source_file_name,err);
                         std::process::exit(1);
                     });
-                user_input.push('\n');
-                self.instructions_idx+=1;
-            }
-            else if cmd == '['{
-                if self.tape[self.tape_idx] == 0 {
-                    /* let jump_index = bp.map.get(&self.instructions_idx).unwrap_or_else(||{
-                        eprintln!("[{}]","Internal Book Keeping Error".red());
-                        eprintln!("[{}]: {}","Hint".purple(),"Couldnt find corresponding index for braces in the HashMap");
-                        std::process::exit(1);
-                    }); */
-                    println!("{:?}",bp.map);
-                    let jump_index= bp.map.get(&self.instructions_idx).unwrap();
+                    user_input.push('\n');
+                    self.instructions_idx+=1;
+                }
+                '[' =>
+                {
+                      if self.tape[self.tape_idx] == 0 {
+                        let jump_index = bp.map.get(&self.instructions_idx).unwrap_or_else(||{
+                            eprintln!("[{}]","Internal Book Keeping Error".red());
+                            eprintln!("[{}]: {}","Hint".purple(),"Couldnt find corresponding index for braces in the HashMap");
+                            std::process::exit(1);
+                        });
+                    //let jump_index= bp.map.get(&self.instructions_idx).unwrap();
 
-                    self.instructions_idx = *jump_index;
-                } 
-                else if self.tape[self.tape_idx] != 0{
-                    self.instructions_idx+=1;
+                        self.instructions_idx = *jump_index;
+                    } 
+                    else if self.tape[self.tape_idx] != 0{
+                        self.instructions_idx+=1;
+                    }
                 }
+
+                ']' => 
+                {
+                    if self.tape[self.tape_idx] != 0{
+                        let jump_index = bp.map.get(&self.instructions_idx).unwrap_or_else(||{
+                            eprintln!("[{}]","Internal Book Keeping Error".red());
+                            eprintln!("[{}]: {}","Hint".purple(),"Couldnt find corresponding index for braces in the HashMap");
+                            std::process::exit(1);
+                        });
+                    //let jump_index= bp.map.get(&self.instructions_idx).unwrap();
+                        self.instructions_idx  = *jump_index;
+                    }
+                    else if self.tape[self.tape_idx] == 0{
+                        self.instructions_idx+=1;
+                    }
+                }
+                _ => {self.instructions_idx+=1;}
             }
-            else if cmd == ']'{
-                if self.tape[self.tape_idx] != 0{
-                    /* let jump_index = bp.map.get(&self.instructions_idx).unwrap_or_else(||{
-                        eprintln!("[{}]","Internal Book Keeping Error".red());
-                        eprintln!("[{}]: {}","Hint".purple(),"Couldnt find corresponding index for braces in the HashMap");
-                        std::process::exit(1);
-                    }); */
-                    println!("{:?}",bp.map);
-                    let jump_index= bp.map.get(&self.instructions_idx).unwrap();
-                    self.instructions_idx  = *jump_index;
-                }
-                else if self.tape[self.tape_idx] == 0{
-                    self.instructions_idx+=1;
-                }
-            } 
         }
     }
+
 }
 
 
 fn main() -> Result<(),std::io::Error>{
     let mut brainfuck = BrainFuck::new();
-    /* let cl_args: Vec<_> = env::args().collect();
+    let cl_args: Vec<_> = env::args().collect();
 
-    if cl_args.len() != 2{
-        eprintln!("[{}]: {}","Fatal Error".red(),"No source file passed");   
+    if cl_args.len() < 2{
+        eprintln!("[{}]: {}","Fatal Error".red(),"No brainf*ck source file passed");
+        std::process::exit(1);
+    }
+
+    if cl_args.len() > 2{
+        eprintln!("[{}]: {}","Fatal Error".red(),"Multipler brainf*ck source files arent supported");
         std::process::exit(1);
     }
 
     if cl_args[1].contains(".bf") == false{
-        eprintln!("[{}]: {}","Fatal Error".red(),"The file provided isnt a valid extension for brainf*ck program");   
+        eprintln!("[{}]: {}","Fatal Error".red(),"The file provided isn't a valid extension for brainf*ck program");   
+        eprintln!("[{}]: {}","Hint".purple(),"Try passing a file with the file extension `.bf` ");   
         std::process::exit(1);
-    }*/
+    }
 
-    brainfuck.copy_instructions("test.bf")?;
+    brainfuck.copy_instructions(&cl_args[1])?;
     brainfuck.read_next_instruction();
 
-    brainfuck.print_tape();
+    //brainfuck.print_tape();
     
 
     /* let mut bp = bracket_parser::new();
