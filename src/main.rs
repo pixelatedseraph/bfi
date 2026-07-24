@@ -1,7 +1,5 @@
 #![allow(warnings)]
 
-//TODO: FATAL BOOK KEEPING BUG at line 188 (Highest Priority)
-
 use std::ops::Index;
 use std::{env, fs};
 use std::fs::File;
