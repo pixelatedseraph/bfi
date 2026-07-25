@@ -44,3 +44,6 @@ Compile a program:
 ```sh
 bfi compile hello.bf
 ```
+
+![demo](assets/mandelbrot.png)
+
