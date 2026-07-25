@@ -8,7 +8,9 @@ use std::os::unix::process;
 use colored::Colorize;
 use std::collections::HashMap;
 use std::path::Path;
+use std::process::Command;
 
+/* Book Keeping */
 struct stack_element{
     character : char,
     index     : usize, 
@@ -20,7 +22,7 @@ impl stack_element{
     }
 }
 
-
+/* Book Keeping  */
 struct bracket_parser{
     stack      : Vec<stack_element>,
     is_matched : bool,
@@ -84,6 +86,7 @@ impl bracket_parser{
 
 }
 
+/* Execution Context For Interpreter*/
 struct BrainFuck{
     tape             : Vec<u8>,
     tape_idx         : usize,
@@ -228,117 +231,184 @@ impl BrainFuck{
 }
 
 
+/* Execution context for the Compiler */
+/* Execution Context for the complier */
+struct CWriter{
+    source_code : String,
+    instructions: String,
+    file_name   : String,
+}
+
+impl CWriter{
+    fn new() -> Self{
+        Self { source_code: (String::new()), instructions: (String::new()), file_name: (String::new())}
+    }
+
+    fn generate_headers(&mut self){
+        self.source_code.push_str("#include<stdio.h>\n");
+        self.source_code.push_str("\n");
+    }
+
+    fn generate_execution_context(&mut self){
+        self.source_code.push_str("static char tape[30000] = {0};\n");
+    }
+
+    fn generate_main(&mut self) {
+        self.source_code.push_str("int main(){\n");
+        self.source_code.push_str("\n");
+        /* Generated code Goes here */
+    } 
+
+    fn terminate_main(&mut self){
+        self.source_code.push_str("return 0; \n}");
+    }
+
+
+    fn copy_instructions(&mut self,path: &str) -> Result<(),std::io::Error>{
+        let file_name = Path::new(path)
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap();
+        self.instructions = fs::read_to_string(path)?;
+        self.file_name = String::from(file_name);
+        Ok(())
+    }
+
+    fn generate_pointer(&mut self){
+        self.source_code.push_str("char* p = tape;\n");
+    }
+
+    fn read_next_instruction(&mut self){
+    
+        self.generate_headers();
+        self.generate_execution_context();
+        self.generate_main();
+        self.generate_pointer();
+        
+        for ch in self.instructions.chars(){
+            if ch == '+'{
+                self.source_code.push_str("++(*p);\n");
+            }
+            else if ch == '-'{
+                self.source_code.push_str("--(*p);\n");
+            }
+            else if ch == '>'{
+                self.source_code.push_str("*(++p);\n");
+            }
+            else if ch == '<'{
+                self.source_code.push_str("*(--p);\n");
+            }
+            else if ch == '.'{
+                self.source_code.push_str("putchar(*p);\n");
+            }
+            else if ch == ','{
+                self.source_code.push_str("*p = getchar();\n");
+            }
+            else if ch == '['{
+                self.source_code.push_str("while(*p){ \n");
+            }
+            else if ch == ']'{
+                self.source_code.push_str("}\n");
+            }
+        }
+        self.terminate_main();
+    }
+
+}
+
+
 fn main() -> Result<(),std::io::Error>{
-    let mut brainfuck = BrainFuck::new();
     let cl_args: Vec<_> = env::args().collect();
 
-    if cl_args.len() < 2{
-        eprintln!("[{}]: {}","Fatal Error".red(),"No brainf*ck source file passed");
+    let possible_commands:Vec<String> = vec!["run".to_string(),"compile".to_string(),"dump".to_string()];
+
+    if cl_args.len() == 1{
+        eprintln!("[{}]: {}: {}","bfi".bright_yellow(),"Fatal Error".bright_red(),"No brainf*ck source file passed");
+        eprintln!("{}","compilation terminated.");
         std::process::exit(1);
     }
 
-    if cl_args.len() > 2{
+    if cl_args.len() == 3 {
+        if !cl_args[2].ends_with(".bf"){
+            eprintln!("[{}]: {}: {}","bfi".bright_yellow(),"Fatal Error".red(),"file format not recognized!");   
+            eprintln!("{}: {}","Hint".purple(),"Try passing a file with the file extension `.bf` "); 
+            std::process::exit(1);
+        }
+        if &cl_args[1] == "run"{ /* invoke interpreter */
+            let mut brainfuck = BrainFuck::new();
+
+            brainfuck.copy_instructions(&cl_args[2]).unwrap_or_else(|err|{
+                eprintln!("{}: {}","bfi".yellow(),format!("{}",err).red());
+                std::process::exit(1);
+            });
+            brainfuck.read_next_instruction();
+
+            return Ok(());
+        }
+        else if &cl_args[1] == "compile"{ 
+            let mut cwriter = CWriter::new();
+
+            cwriter.copy_instructions(&cl_args[2]).unwrap_or_else(|err|{
+                eprintln!("{}: {}","bfi".yellow(),format!("{}",err).red());
+                std::process::exit(1);
+            });
+
+            cwriter.read_next_instruction();
+
+            let cdumpfile_name = "_internal_bf_c_dump.c";
+            let cdumpexec_name = cwriter.file_name.strip_suffix(".bf").unwrap();
+
+            fs::write(cdumpfile_name, &cwriter.source_code).unwrap();
+            let status = Command::new("cc")
+                .args([
+                    "-Ofast",
+                    "-march=native",
+                    "-flto",
+                    cdumpfile_name,
+                    "-o",
+                    cdumpexec_name
+                ]).status()?;
+
+            let _ = fs::remove_file(cdumpfile_name);
+            println!("{}","compiled successfully!".green());
+            return Ok(());
+        }
+        else if &cl_args[1] == "dump"{
+            let mut cwriter = CWriter::new();
+
+            cwriter.copy_instructions(&cl_args[2]).unwrap_or_else(|err|{
+                eprintln!("{}: {}","bfi".yellow(),format!("{}",err).red());
+                std::process::exit(1);
+            });
+
+            cwriter.read_next_instruction();
+
+            let cdumpfile_name = "_internal_bf_c_dump.c";
+            fs::write(cdumpfile_name, &cwriter.source_code).unwrap();
+
+            return Ok(());
+        }
+        else {
+            eprintln!("{}: {}: {}","bfi".bright_yellow(),"Fatal Error".red(),"Invalid argument passed");
+            eprintln!("{}: {}","Hint".purple(),"Usage : bfi <operation> <file>");
+            eprintln!("{}: ","operation: run,compile,dump");
+
+            std::process::exit(1);
+        }
+
+    }
+
+    if cl_args.len() != 3{
+        eprintln!("{}: {}: {}","bfi".bright_yellow(),"Fatal Error".red(),"Invalid argument passed");
+        eprintln!("{}: {}","Hint".purple(),"Usage : bfi <operation> <file>");
+        eprintln!("{}: ","operation: run,compile,dump");
+        std::process::exit(1);
+    }
+
+    if cl_args.len() > 3{
         eprintln!("[{}]: {}","Fatal Error".red(),"Multipler brainf*ck source files arent supported");
         std::process::exit(1);
     }
-
-    if cl_args[1].contains(".bf") == false{
-        eprintln!("[{}]: {}","Fatal Error".red(),"The file provided isn't a valid extension for brainf*ck program");   
-        eprintln!("[{}]: {}","Hint".purple(),"Try passing a file with the file extension `.bf` ");   
-        std::process::exit(1);
-    }
-
-    brainfuck.copy_instructions(&cl_args[1])?;
-    brainfuck.read_next_instruction();
-
-    //brainfuck.print_tape();
-    
-
-    /* let mut bp = bracket_parser::new();
-    bp.parse("[][]").verify();
-    
-    println!("{:?}",bp.map); */
-
-
-
     Ok(())
 }
-/*
-#[cfg(test)]
-mod tests{
-    use crate::parse_brackets;
-
-    
-    #[test]
-    fn test_pb1(){
-        assert_eq!(parse_brackets("[]["),false);
-    }
-    #[test]
-    fn test_pb2(){
-        assert_eq!(parse_brackets("]"),false);
-    }
-
-    #[test]
-    fn test_pb3(){
-        assert_eq!(parse_brackets("[[]"),false);
-    }
-
-    #[test]
-    fn test_pb4(){
-        assert_eq!(parse_brackets("[[[[[[[[[]]]]]]]]]"),true);
-    }
-
-
-    #[test]
-    fn test_pb5(){
-        assert_eq!(parse_brackets("[][[]][[][]]"),true);
-    }
-
-
-    #[test]
-    fn test_pb6(){
-        assert_eq!(parse_brackets("[][][][][][][]"),true);
-    }
-
-
-    #[test]
-    fn test_pb7(){
-        assert_eq!(parse_brackets("[[[]]]"),true);
-    }
-
-
-    #[test]
-    fn test_pb8(){
-        assert_eq!(parse_brackets("[[][[]][]]"),true);
-    }
-
-
-    #[test]
-    fn test_pb9(){
-        assert_eq!(parse_brackets("[[[[["),false);
-    }
-
-    #[test]
-    fn test_pb10(){
-        assert_eq!(parse_brackets("]]]]]]]"),false);
-    }
-
-    #[test]
-    fn test_pb11(){
-        assert_eq!(parse_brackets("[[]]][[]"),false);
-    }
-
-    #[test]
-    fn stress_test(){
-        let mut test = String::new();
-        test.push_str(&"[".repeat(100_000));
-        test.push_str(&"]".repeat(99_999));
-        assert_eq!(parse_brackets(&test),false)
-    }
-
-
-    
-}
-
-
-*/
