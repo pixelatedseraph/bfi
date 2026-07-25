@@ -2,7 +2,7 @@
 
 **bfi** is an amalgamation of an interpreter and an ahead-of-time (AOT) compiler for the esoteric programming language **Brainfuck**.
 
-For more information about the BrainFuck, see:
+For more information about BrainFuck,see:
 https://en.wikipedia.org/wiki/Brainfuck
 
 
