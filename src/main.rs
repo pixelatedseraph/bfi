@@ -139,7 +139,9 @@ impl BrainFuck{
                     if(self.tape[self.tape_idx] == u8::MAX){
                         self.tape[self.tape_idx] = 0;
                     }
-                    self.tape[self.tape_idx] += 1;
+                    else{
+                        self.tape[self.tape_idx] += 1;
+                    }
                     self.instructions_idx+=1;
                 }
 
@@ -148,7 +150,9 @@ impl BrainFuck{
                     if(self.tape[self.tape_idx] == u8::MIN){
                         self.tape[self.tape_idx] = 255;
                     }
-                    self.tape[self.tape_idx] -= 1;
+                    else{
+                        self.tape[self.tape_idx] -= 1;
+                    }
                     self.instructions_idx+=1;
                 }
 
@@ -171,24 +175,22 @@ impl BrainFuck{
                 {
                     let tape_char = self.tape[self.tape_idx];
 
-                    if tape_char >= 32 && tape_char <= 126 || tape_char == 10 {
-                        print!("{}",tape_char as char);
-                    }
-                    else {
-                        print!("{}",self.tape[self.tape_idx]);
-                    }
+                    print!("{}",tape_char as char);
                     self.instructions_idx+=1;
                 }
                 ',' => 
                 {
-                    let mut user_input = String::new();
-                    std::io::stdin().read_line(&mut user_input).unwrap_or_else(
+
+                    let mut user_input = [0u8; 1];
+                    std::io::stdin().read_exact(&mut user_input).unwrap_or_else(
                     |err|{
 
                         eprintln!("[{}]: in {} {}","Side Effect Error".red(),self.source_file_name,err);
                         std::process::exit(1);
                     });
-                    user_input.push('\n');
+                    let ch = user_input[0];
+                    self.tape[self.tape_idx] = ch;
+
                     self.instructions_idx+=1;
                 }
                 '[' =>
@@ -250,7 +252,7 @@ impl CWriter{
     }
 
     fn generate_execution_context(&mut self){
-        self.source_code.push_str("static char tape[30000] = {0};\n");
+        self.source_code.push_str("static unsigned char tape[30000] = {0};\n");
     }
 
     fn generate_main(&mut self) {
@@ -276,7 +278,7 @@ impl CWriter{
     }
 
     fn generate_pointer(&mut self){
-        self.source_code.push_str("char* p = tape;\n");
+        self.source_code.push_str("char* restrict p = tape;\n");
     }
 
     fn read_next_instruction(&mut self){
@@ -294,10 +296,10 @@ impl CWriter{
                 self.source_code.push_str("--(*p);\n");
             }
             else if ch == '>'{
-                self.source_code.push_str("*(++p);\n");
+                self.source_code.push_str("++p;\n");
             }
             else if ch == '<'{
-                self.source_code.push_str("*(--p);\n");
+                self.source_code.push_str("--p;\n");
             }
             else if ch == '.'{
                 self.source_code.push_str("putchar(*p);\n");
@@ -320,8 +322,6 @@ impl CWriter{
 
 fn main() -> Result<(),std::io::Error>{
     let cl_args: Vec<_> = env::args().collect();
-
-    let possible_commands:Vec<String> = vec!["run".to_string(),"compile".to_string(),"dump".to_string()];
 
     if cl_args.len() == 1{
         eprintln!("[{}]: {}: {}","bfi".bright_yellow(),"Fatal Error".bright_red(),"No brainf*ck source file passed");
@@ -356,16 +356,17 @@ fn main() -> Result<(),std::io::Error>{
 
             cwriter.read_next_instruction();
 
-            let cdumpfile_name = "_internal_bf_c_dump.c";
+            let mut cdumpfile_name = cwriter.file_name.strip_suffix(".bf").unwrap().to_string();
+            cdumpfile_name.push_str(".c");
             let cdumpexec_name = cwriter.file_name.strip_suffix(".bf").unwrap();
 
-            fs::write(cdumpfile_name, &cwriter.source_code).unwrap();
+            fs::write(&cdumpfile_name, &cwriter.source_code).unwrap();
             let status = Command::new("cc")
                 .args([
                     "-Ofast",
                     "-march=native",
                     "-flto",
-                    cdumpfile_name,
+                    &cdumpfile_name,
                     "-o",
                     cdumpexec_name
                 ]).status()?;
@@ -384,7 +385,9 @@ fn main() -> Result<(),std::io::Error>{
 
             cwriter.read_next_instruction();
 
-            let cdumpfile_name = "_internal_bf_c_dump.c";
+            let mut cdumpfile_name = cwriter.file_name.strip_suffix(".bf").unwrap().to_string();
+            cdumpfile_name.push_str(".c");
+            
             fs::write(cdumpfile_name, &cwriter.source_code).unwrap();
 
             return Ok(());
