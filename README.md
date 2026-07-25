@@ -2,9 +2,6 @@
 
 **bfi** is an amalgamation of an interpreter and an ahead-of-time (AOT) compiler for the esoteric programming language **Brainfuck**.
 
-Brainfuck is a deliberately minimal language consisting of only **eight commands**, yet it is Turing complete.
-`bfi` can interpret Brainfuck programs directly, compile them into native executables, or emit equivalent C source code.
-
 For more information about the BrainFuck, see:
 https://en.wikipedia.org/wiki/Brainfuck
 
