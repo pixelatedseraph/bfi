@@ -16,7 +16,7 @@ curl -fsSL https://raw.githubusercontent.com/pixelatedseraph/bfi/main/install.sh
 ```
 
 ## Requirements
-Since bfi transpiles to C code, a C compiler is expected to be installed in your system
+Since **bfi** transpiles to C code, a C compiler is expected to be installed in your system
 GCC,Clang,MSVC,TCC and other standard compliant C compilers are supported
 
 
