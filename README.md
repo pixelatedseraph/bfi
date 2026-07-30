@@ -29,6 +29,7 @@ bfi <operation> <file>
 |-----------|-------------|
 | `run` | Interpret and execute a Brainfuck program |
 | `compile` | Compile a Brainfuck program into a native executable |
+| `hcompile` | Same functionality as `compile` but uses **Haskell** as codegen(Experimental)|
 | `dump` | Emit equivalent C source code |
 
 ### Examples
