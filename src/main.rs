@@ -2,6 +2,7 @@
 
 mod bfir;
 
+use std::io::ErrorKind::Other;
 use std::ops::Index;
 use std::{env, fs};
 use std::fs::File;
@@ -419,6 +420,48 @@ fn main() -> Result<(),std::io::Error>{
             let _ = fs::remove_file(cdumpfile_name);
             println!("{}","compiled successfully!".green());
             return Ok(());
+
+        }
+        else if &cl_args[1] == "hcompile"{
+            let output = Command::new("/home/mazeed/Projects/HaskCodeGen/dist-newstyle/build/x86_64-linux/ghc-9.6.7/HaskCodeGen-0.1.0.0/x/HaskCodeGen/build/HaskCodeGen/HaskCodeGen")
+                .args([
+                    &cl_args[2]
+                ]).status()?;
+
+            if let Some(x) = output.code(){
+                match x{
+                    1 => {
+                        eprintln!("{}: {}: {}","bfi".yellow(),"Error:".red(),"No such file");
+                        eprintln!("{}","compilation terminated.".red());
+                        std::process::exit(1);
+                    }
+                    2 => {
+                        eprintln!("[{}]: {}: {}","bfi".bright_yellow(),"Fatal Error".red(),"file format not recognized!");   
+                        eprintln!("{}: {}","Hint".purple(),"Try passing a file with the file extension `.bf` "); 
+                        eprintln!("{}","compilation terminated.".red());
+                        std::process::exit(1);
+                    }
+                    _ => {}
+                }
+            }
+            let path = Path::new(&cl_args[2]);
+            let new_path = path.with_extension("c");
+            let new_exec_path = path.with_extension("");
+
+            let status = Command::new("cc")
+                .args([
+                    "-Ofast",
+                    "-march=native",
+                    "-flto",
+                    "-std=c11",
+                    &new_path.to_str().unwrap(),
+                    "-o",
+                    &new_exec_path.to_str().unwrap(),
+                ]).status()?;
+
+            println!("{}","compiled successfully!".green());
+            return Ok(());
+
         }
         else if &cl_args[1] == "dump"{
             let mut cwriter = CWriter::new();
@@ -455,7 +498,7 @@ fn main() -> Result<(),std::io::Error>{
     }
 
     if cl_args.len() > 3{
-        eprintln!("[{}]: {}","Fatal Error".red(),"Multipler brainf*ck source files arent supported");
+        eprintln!("[{}]: {}","Fatal Error".red(),"Multiple brainf*ck source files arent supported");
         std::process::exit(1);
     }
     Ok(())
